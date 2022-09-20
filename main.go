@@ -8,6 +8,8 @@ import (
 	"log"
 	"math/rand"
 
+	"github.com/charmbracelet/bubbles/spinner"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -34,9 +36,13 @@ type model struct {
 	window    int
 	books     struct{ name []string }
 	msg       string
+	spinner   spinner.Model
 }
 
 func initialModel() model {
+	sp := spinner.New()
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("206"))
+
 	ti := textinput.New()
 	ti.Placeholder = "Brave New World"
 	ti.Focus()
@@ -44,21 +50,29 @@ func initialModel() model {
 	ti.Width = 20
 
 	return model{
+		spinner:   sp,
 		textInput: ti,
 		err:       nil,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, spinner.Tick)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
 	case tea.KeyMsg:
 		switch msg.Type {
+
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
 		case tea.KeyEnter:
@@ -68,7 +82,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				} else {
 					m.books.name = append(m.books.name, m.textInput.Value())
-					m.msg = fmt.Sprintf("[%s %s] added to your library.\n", randomEmoji(), m.books.name[len(m.books.name)-1])
+					m.msg = fmt.Sprintf("%s %s added to your library.\n", randomEmoji(), m.books.name[len(m.books.name)-1])
 
 					//m.textInput.Blur()
 					m.textInput.Reset()
@@ -121,10 +135,10 @@ func randomEmoji() string {
 
 func (m model) View() string {
 
-	s := ""
+	s := m.spinner.View() + " "
 
 	if m.window == 0 {
-		s = fmt.Sprintf(
+		s += fmt.Sprintf(
 			"Enter the name of the book you want to add.\n\n%s\n\n",
 			m.textInput.View(),
 		)
@@ -133,7 +147,7 @@ func (m model) View() string {
 
 	if m.window == 2 {
 
-		s = "Your library:\n\n"
+		s += "Your library:\n\n"
 
 		for _, book := range m.books.name {
 			s += fmt.Sprintf("%s %s\n", randomEmoji(), book)
