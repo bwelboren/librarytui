@@ -1,8 +1,5 @@
 package main
 
-// A simple program demonstrating the text input component from the Bubbles
-// component library.
-
 import (
 	"fmt"
 	"log"
@@ -44,9 +41,9 @@ func initialModel() model {
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("206"))
 
 	ti := textinput.New()
-	ti.Placeholder = "Brave New World"
+	ti.Placeholder = "..Book"
 	ti.Focus()
-	ti.CharLimit = 156
+	ti.CharLimit = 54
 	ti.Width = 20
 
 	return model{
@@ -71,11 +68,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.KeyMsg:
-		switch msg.Type {
 
-		case tea.KeyCtrlC, tea.KeyEsc:
+		switch msg.String() {
+
+		case "ctrl+c", "esc":
 			return m, tea.Quit
-		case tea.KeyEnter:
+
+		case "enter":
 			if m.window == 0 {
 				if m.textInput.Value() == "" {
 					m.msg = "⚠ Field can't be empty!\n"
@@ -88,15 +87,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.textInput.Reset()
 					return m, cmd
 				}
-
 			}
 
-		}
-		switch msg.String() {
-
 		case "ctrl+a", "ctrl+b", "ctrl+x":
-			m.msg = ""
 			s := msg.String()
+
+			m.msg = ""
+			m.textInput.Blur()
 
 			// Add books
 			if s == "ctrl+a" {
@@ -106,19 +103,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Display books
 			if s == "ctrl+b" {
-				m.window = 2
-				m.textInput.Blur()
+				m.window = 1
 			}
 
-			// Main menu
-			if s == "ctrl+x" {
-				m.window = 3
-				m.textInput.Blur()
-			}
 
 		}
 
-	// We handle errors just like any other message
 	case errMsg:
 		m.err = msg
 		return m, nil
@@ -145,21 +135,14 @@ func (m model) View() string {
 
 	}
 
-	if m.window == 2 {
-
+	if m.window == 1 {
 		s += "Your library:\n\n"
-
 		for _, book := range m.books.name {
-			s += fmt.Sprintf("%s %s\n", randomEmoji(), book)
+			s += fmt.Sprintf("📘 %s\n", book)
 		}
 	}
 
-	if m.window == 3 {
-		mb := m.books.name
-		s = fmt.Sprintf("\n\n%d , %d\n\n", len(mb), cap(mb))
-	}
-
-	footer := helpStyle("\n- ctrl+a: add book • ctrl+b: show books • ctrl+c: exit\n")
+	footer := helpStyle("\n- ctrl+a: add book • ctrl+b: show books • ctrl+c/esc: exit\n")
 	return s + m.msg + footer
 
 }
