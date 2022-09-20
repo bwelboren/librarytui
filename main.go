@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,6 +33,7 @@ type model struct {
 	err       error
 	window    int
 	books     struct{ name []string }
+	msg       string
 }
 
 func initialModel() model {
@@ -61,27 +63,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case tea.KeyEnter:
 			if m.window == 0 {
-				m.window = 1
-				m.books.name = append(m.books.name, m.textInput.Value())
-				m.textInput.Blur()
-				m.textInput.Reset()
-				return m, cmd
+				if m.textInput.Value() == "" {
+					m.msg = "⚠ Field can't be empty!\n"
+
+				} else {
+					m.books.name = append(m.books.name, m.textInput.Value())
+					m.msg = fmt.Sprintf("[%s %s] added to your library.\n", randomEmoji(), m.books.name[len(m.books.name)-1])
+
+					//m.textInput.Blur()
+					m.textInput.Reset()
+					return m, cmd
+				}
+
 			}
 
 		}
 		switch msg.String() {
-		//Add book
-		case "ctrl+a":
-			m.window = 0
-			m.textInput.Focus()
-			// Show books
-		case "ctrl+b":
-			m.window = 2
-			m.textInput.Blur()
-			//Main menu
-		case "ctrl+x":
-			m.window = 3
-			m.textInput.Blur()
+
+		case "ctrl+a", "ctrl+b", "ctrl+x":
+			m.msg = ""
+			s := msg.String()
+
+			// Add books
+			if s == "ctrl+a" {
+				m.window = 0
+				m.textInput.Focus()
+			}
+
+			// Display books
+			if s == "ctrl+b" {
+				m.window = 2
+				m.textInput.Blur()
+			}
+
+			// Main menu
+			if s == "ctrl+x" {
+				m.window = 3
+				m.textInput.Blur()
+			}
+
 		}
 
 	// We handle errors just like any other message
@@ -92,6 +112,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	m.textInput, cmd = m.textInput.Update(msg)
 	return m, cmd
+}
+
+func randomEmoji() string {
+	emojis := []rune("📔📕📖📗📘📙📓")
+	return string(emojis[rand.Intn(len(emojis))])
 }
 
 func (m model) View() string {
@@ -105,20 +130,13 @@ func (m model) View() string {
 		)
 
 	}
-	if m.window == 1 {
 
-		s = fmt.Sprintf(
-			"You added a book named:\n\n%s\n\n",
-			m.books.name[len(m.books.name)-1],
-		) + "\n"
-
-	}
 	if m.window == 2 {
 
-		s = "\n\nYour library:\n\n"
+		s = "Your library:\n\n"
 
 		for _, book := range m.books.name {
-			s += fmt.Sprintf("%s\n", book)
+			s += fmt.Sprintf("%s %s\n", randomEmoji(), book)
 		}
 	}
 
@@ -127,7 +145,7 @@ func (m model) View() string {
 		s = fmt.Sprintf("\n\n%d , %d\n\n", len(mb), cap(mb))
 	}
 
-	footer := helpStyle("- ctrl+a: add book • ctrl+b: show books • ctrl+c: exit\n")
-	return s + footer
+	footer := helpStyle("\n- ctrl+a: add book • ctrl+b: show books • ctrl+c: exit\n")
+	return s + m.msg + footer
 
 }
