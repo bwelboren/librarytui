@@ -72,7 +72,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "ctrl+a":
+
+			// Put focus back to first index 'Book' when pressing ctrl+a
+			if m.focusIndex == 0 {
+				m.inputs[0].Focus()
+			}
 			m.window = 0
+
+		case "ctrl+b":
+			m.window = 1
 
 		case "tab", "shift+tab", "enter", "up", "down":
 			s := msg.String()
@@ -81,10 +89,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				for _, text := range m.inputs {
 					if text.Value() == "" {
+						// Quit if given an empty value in either book or description
 						return m, tea.Quit
 					} else {
 						m.books = append(m.books, text.Value())
 						m.window = 1
+
+						// Make sure focus index is on one again once you leave m.window 0
+						m.focusIndex = 0
 					}
 				}
 
@@ -92,17 +104,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			}
 
-			// Cycle indexes
-			if s == "up" {
-				m.focusIndex--
-			} else {
-				m.focusIndex++
-			}
+			// Only cycle index when you're adding a book
 
-			if m.focusIndex > len(m.inputs) {
-				m.focusIndex = 0
-			} else if m.focusIndex < 0 {
-				m.focusIndex = len(m.inputs)
+			if m.window == 0 {
+
+				if s == "up" {
+					m.focusIndex--
+				} else {
+					m.focusIndex++
+				}
+
+				if m.focusIndex > len(m.inputs) {
+					m.focusIndex = 0
+				} else if m.focusIndex < 0 {
+					m.focusIndex = len(m.inputs)
+				}
 			}
 
 			cmds := make([]tea.Cmd, len(m.inputs))
@@ -146,10 +162,19 @@ func (m *model) resetInputs() {
 
 }
 
+func (m *model) blurInputs() {
+	for i := range m.inputs {
+		m.inputs[i].Blur()
+	}
+}
+
 func (m model) View() string {
 	var b strings.Builder
 
+	books := make(map[string]string)
+
 	if m.window == 0 {
+
 		b.WriteString("Add a book.\n\n")
 
 		for i := range m.inputs {
@@ -165,10 +190,14 @@ func (m model) View() string {
 		fmt.Fprintf(&b, "\n\n%s\n", *button)
 
 	} else if m.window == 1 {
+		m.blurInputs()
 		b.WriteString("Your library.\n\n")
-		for _, x := range m.books {
-			b.WriteString(x + "\n")
+
+		for x := 0; x < len(m.books); x = x + 2 {
+			b.WriteString("Book: " + m.books[x] + "\t\tDescription: " + m.books[x+1] + "\n")
+			books[m.books[x]] = m.books[x+1]
 		}
+
 	}
 
 	b.WriteString(footerStyle("- ctrl+a: add book • ctrl+b: show books • ctrl+c/esc: exit\n"))
