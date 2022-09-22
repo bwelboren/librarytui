@@ -22,6 +22,9 @@ var (
 	focusedButton = focusedStyle.Copy().Render("[ Submit ]")
 	blurredButton = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
 	footerStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render
+
+	editMenu string
+	footer   = "- ctrl+a: add book • ctrl+b: show books • ctrl+c/esc: exit "
 )
 
 type model struct {
@@ -29,11 +32,37 @@ type model struct {
 	inputs     []textinput.Model
 	window     int
 	books      []string
+	selected   map[int]struct{}
+}
+
+func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
+	cmds := make([]tea.Cmd, len(m.inputs))
+
+	for i := range m.inputs {
+		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+	}
+
+	return tea.Batch(cmds...)
+}
+
+func (m *model) resetInputs() {
+	for i := range m.inputs {
+		m.inputs[i].Reset()
+	}
+
+}
+
+func (m *model) blurInputs() {
+	for i := range m.inputs {
+		m.inputs[i].Blur()
+	}
 }
 
 func initialModel() model {
 	m := model{
-		inputs: make([]textinput.Model, 2),
+		inputs:   make([]textinput.Model, 2),
+		books:    []string{},
+		selected: make(map[int]struct{}),
 	}
 
 	var t textinput.Model
@@ -65,6 +94,7 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -72,11 +102,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "ctrl+a":
-
 			// Put focus back to first index 'Book' when pressing ctrl+a
-			if m.focusIndex == 0 {
-				m.inputs[0].Focus()
-			}
+			m.inputs[0].Focus()
 			m.window = 0
 
 		case "ctrl+b":
@@ -85,26 +112,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab", "shift+tab", "enter", "up", "down":
 			s := msg.String()
 
-			if s == "enter" && m.focusIndex == len(m.inputs) && m.window == 0 {
+			cmds := make([]tea.Cmd, len(m.inputs))
 
-				for _, text := range m.inputs {
-					if text.Value() == "" {
-						// Quit if given an empty value in either book or description
-						return m, tea.Quit
-					} else {
-						m.books = append(m.books, text.Value())
-						m.window = 1
+			// Doesnt matter which window, we use the same keys
 
-						// Make sure focus index is on one again once you leave m.window 0
-						m.focusIndex = 0
-					}
-				}
+			var len_inputs int
 
-				m.resetInputs()
-
+			if m.window == 0 {
+				len_inputs = len(m.inputs)
+			} else if m.window == 1 {
+				len_inputs = len(m.books)
 			}
-
-			// Only cycle index when you're adding a book
 
 			if m.window == 0 {
 
@@ -113,27 +131,64 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.focusIndex++
 				}
+				// When submitting
+				if s == "enter" && m.focusIndex == len_inputs+1 {
 
-				if m.focusIndex > len(m.inputs) {
+					for _, text := range m.inputs {
+						if text.Value() == "" {
+							// Quit if given an empty value in either book or description
+							return m, tea.Quit
+						} else {
+							m.books = append(m.books, text.Value())
+
+						}
+					}
+
 					m.focusIndex = 0
-				} else if m.focusIndex < 0 {
-					m.focusIndex = len(m.inputs)
+					m.window = 1
+
 				}
+
+				// Handle textInput styling
+
+				for i := 0; i <= len_inputs-1; i++ {
+					if i == m.focusIndex {
+						// Set focused state
+						cmds[i] = m.inputs[i].Focus()
+						m.inputs[i].PromptStyle = focusedStyle
+						m.inputs[i].TextStyle = focusedStyle
+						continue
+					}
+					// Remove focused state
+					m.inputs[i].Blur()
+					m.inputs[i].PromptStyle = noStyle
+					m.inputs[i].TextStyle = noStyle
+				}
+
 			}
 
-			cmds := make([]tea.Cmd, len(m.inputs))
-			for i := 0; i <= len(m.inputs)-1; i++ {
-				if i == m.focusIndex {
-					// Set focused state
-					cmds[i] = m.inputs[i].Focus()
-					m.inputs[i].PromptStyle = focusedStyle
-					m.inputs[i].TextStyle = focusedStyle
-					continue
+			if m.window == 1 {
+
+				if s == "up" {
+					if m.focusIndex > 0 {
+						m.focusIndex--
+					}
 				}
-				// Remove focused state
-				m.inputs[i].Blur()
-				m.inputs[i].PromptStyle = noStyle
-				m.inputs[i].TextStyle = noStyle
+				if s == "down" {
+					if m.focusIndex < len_inputs-2 {
+						m.focusIndex++
+					}
+				}
+
+				if s == "enter" {
+					_, ok := m.selected[m.focusIndex]
+					if ok {
+						delete(m.selected, m.focusIndex)
+					} else {
+						m.selected[m.focusIndex] = struct{}{}
+					}
+				}
+
 			}
 
 			return m, tea.Batch(cmds...)
@@ -145,33 +200,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
-	cmds := make([]tea.Cmd, len(m.inputs))
-
-	for i := range m.inputs {
-		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
-	}
-
-	return tea.Batch(cmds...)
-}
-
-func (m *model) resetInputs() {
-	for i := range m.inputs {
-		m.inputs[i].Reset()
-	}
-
-}
-
-func (m *model) blurInputs() {
-	for i := range m.inputs {
-		m.inputs[i].Blur()
-	}
-}
-
 func (m model) View() string {
 	var b strings.Builder
 
-	books := make(map[string]string)
+	//books := make(map[string]string)
 
 	if m.window == 0 {
 
@@ -190,17 +222,34 @@ func (m model) View() string {
 		fmt.Fprintf(&b, "\n\n%s\n", *button)
 
 	} else if m.window == 1 {
+		m.resetInputs()
 		m.blurInputs()
 		b.WriteString("Your library.\n\n")
 
-		for x := 0; x < len(m.books); x = x + 2 {
-			b.WriteString("Book: " + m.books[x] + "\t\tDescription: " + m.books[x+1] + "\n")
-			books[m.books[x]] = m.books[x+1]
+		editMenu = "• ctrl+d: delete •"
+
+		x := 0
+		for i := 0; i < len(m.books); i = i + 2 {
+			cursor := " "
+			if m.focusIndex == x {
+				cursor = ">"
+			}
+
+			checked := " "
+			if _, ok := m.selected[x]; ok {
+				checked = "x"
+			}
+			x++
+
+			s := fmt.Sprintf("%s [%s] Boek:%s\t\tBeschrijving:%s\n", cursor, checked, m.books[i], m.books[i+1])
+
+			b.WriteString(s)
+
 		}
 
 	}
 
-	b.WriteString(footerStyle("- ctrl+a: add book • ctrl+b: show books • ctrl+c/esc: exit\n"))
+	b.WriteString(footerStyle(footer + editMenu))
 
 	return b.String()
 }
