@@ -33,6 +33,7 @@ type model struct {
 	window     int
 	books      []string
 	selected   map[int]struct{}
+	checked    bool
 }
 
 func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
@@ -167,6 +168,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			}
 
+			//TODO@bwelboren : delete selected book record
 			if m.window == 1 {
 
 				if s == "up" {
@@ -179,13 +181,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.focusIndex++
 					}
 				}
-
 				if s == "enter" {
 					_, ok := m.selected[m.focusIndex]
 					if ok {
 						delete(m.selected, m.focusIndex)
-					} else {
+						m.checked = false
+					} else if !m.checked {
 						m.selected[m.focusIndex] = struct{}{}
+						m.checked = true
 					}
 				}
 
@@ -202,8 +205,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	var b strings.Builder
-
-	//books := make(map[string]string)
 
 	if m.window == 0 {
 
