@@ -8,10 +8,13 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+const listHeight = 14
 
 var (
 	focusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
@@ -23,9 +26,24 @@ var (
 	blurredButton = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
 	footerStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render
 
-	editMenu string
-	footer   = "- ctrl+a: add book • ctrl+b: show books • ctrl+c/esc: exit "
+	docStyle = lipgloss.NewStyle().Margin(1, 2)
+
+	footer = "- ctrl+a: add book • ctrl+b: show books • ctrl+c/esc: exit "
 )
+
+var (
+	titleStyle = lipgloss.NewStyle().MarginLeft(2)
+)
+
+func (b book) Title() string       { return b.title }
+func (b book) Description() string { return b.desc }
+func (b book) FilterValue() string { return b.title }
+
+var books = []list.Item{}
+
+type book struct {
+	title, desc string
+}
 
 type model struct {
 	focusIndex int
@@ -33,7 +51,8 @@ type model struct {
 	window     int
 	books      []string
 	selected   map[int]struct{}
-	checked    bool
+	boeken     map[string]string
+	list       list.Model
 }
 
 func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
@@ -59,11 +78,29 @@ func (m *model) blurInputs() {
 	}
 }
 
+func (m *model) addBook(title, desc string) {
+
+	var books = []list.Item{book{title, desc}, book{"title", "desc"}}
+	var myLibrary = list.New(books, list.NewDefaultDelegate(), 46, 2)
+
+	myLibrary.Title = "Library"
+
+	m.list = myLibrary
+
+}
+
 func initialModel() model {
+
+	var myLibrary = list.New(books, list.NewDefaultDelegate(), 0, 0)
+
+	myLibrary.Title = "Library"
+
 	m := model{
 		inputs:   make([]textinput.Model, 2),
 		books:    []string{},
 		selected: make(map[int]struct{}),
+		boeken:   make(map[string]string),
+		list:     myLibrary,
 	}
 
 	var t textinput.Model
@@ -91,12 +128,21 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	var cmds []tea.Cmd
+
+	cmds = append(cmds, textinput.Blink)
+	cmds = append(cmds, tea.EnterAltScreen)
+
+	return tea.Batch(cmds...)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		h, v := docStyle.GetFrameSize()
+		m.list.SetSize(msg.Width-h, msg.Height-v)
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
@@ -110,7 +156,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+b":
 			m.window = 1
 
-		case "tab", "shift+tab", "enter", "up", "down":
+		case "tab", "shift+tab", "enter", "up", "down", "ctrl+d":
 			s := msg.String()
 
 			cmds := make([]tea.Cmd, len(m.inputs))
@@ -127,22 +173,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			if m.window == 0 {
 
+				var myBooks []string
+
 				if s == "up" {
 					m.focusIndex--
 				} else {
 					m.focusIndex++
 				}
 				// When submitting
+
 				if s == "enter" && m.focusIndex == len_inputs+1 {
 
 					for _, text := range m.inputs {
 						if text.Value() == "" {
-							// Quit if given an empty value in either book or description
 							return m, tea.Quit
 						} else {
-							m.books = append(m.books, text.Value())
+							myBooks = append(myBooks, text.Value())
 
 						}
+
+					}
+
+					for i := 0; i < len(myBooks)-1; i++ {
+						m.addBook(myBooks[i], myBooks[i+1])
+
 					}
 
 					m.focusIndex = 0
@@ -170,6 +224,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			//TODO@bwelboren : delete selected book record
 			if m.window == 1 {
+				var cmd tea.Cmd
 
 				if s == "up" {
 					if m.focusIndex > 0 {
@@ -177,30 +232,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				if s == "down" {
-					if m.focusIndex < len_inputs-2 {
+					if m.focusIndex < len(m.boeken)-1 {
 						m.focusIndex++
 					}
 				}
-				if s == "enter" {
-					_, ok := m.selected[m.focusIndex]
-					if ok {
-						delete(m.selected, m.focusIndex)
-						m.checked = false
-					} else if !m.checked {
-						m.selected[m.focusIndex] = struct{}{}
-						m.checked = true
-					}
-				}
 
+				return m, cmd
 			}
 
-			return m, tea.Batch(cmds...)
 		}
 	}
 
-	cmd := m.updateInputs(msg)
+	// This will also call our delegate's update function.
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	m.updateInputs(msg)
 
 	return m, cmd
+
+	//return m, tea.Batch(cmds...)
+
 }
 
 func (m model) View() string {
@@ -223,40 +274,24 @@ func (m model) View() string {
 		fmt.Fprintf(&b, "\n\n%s\n", *button)
 
 	} else if m.window == 1 {
+
 		m.resetInputs()
 		m.blurInputs()
-		b.WriteString("Your library.\n\n")
 
-		editMenu = "• ctrl+d: delete •"
+		return docStyle.Render(m.list.View())
 
-		x := 0
-		for i := 0; i < len(m.books); i = i + 2 {
-			cursor := " "
-			if m.focusIndex == x {
-				cursor = ">"
-			}
-
-			checked := " "
-			if _, ok := m.selected[x]; ok {
-				checked = "x"
-			}
-			x++
-
-			s := fmt.Sprintf("%s [%s] Boek:%s\t\tBeschrijving:%s\n", cursor, checked, m.books[i], m.books[i+1])
-
-			b.WriteString(s)
-
-		}
+		//s += fmt.Sprintf("%s Boek:%s\t\tBeschrijving:%s\n", cursor, m.boeken[x], m.boeken[y])
 
 	}
 
-	b.WriteString(footerStyle(footer + editMenu))
+	b.WriteString(footerStyle(footer))
 
 	return b.String()
 }
 
 func main() {
-	if err := tea.NewProgram(initialModel()).Start(); err != nil {
+
+	if err := tea.NewProgram(initialModel(), tea.WithAltScreen()).Start(); err != nil {
 		fmt.Printf("could not start program: %s\n", err)
 		os.Exit(1)
 	}
