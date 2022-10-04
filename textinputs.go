@@ -14,8 +14,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const listHeight = 14
-
 var (
 	focusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	blurredStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -31,15 +29,9 @@ var (
 	footer = "- ctrl+a: add book • ctrl+b: show books • ctrl+c/esc: exit "
 )
 
-var (
-	titleStyle = lipgloss.NewStyle().MarginLeft(2)
-)
-
 func (b book) Title() string       { return b.title }
 func (b book) Description() string { return b.desc }
 func (b book) FilterValue() string { return b.title }
-
-var books = []list.Item{}
 
 type book struct {
 	title, desc string
@@ -78,36 +70,30 @@ func (m *model) blurInputs() {
 	}
 }
 
-func (m *model) addBook(title, desc string) {
-
-	var books = []list.Item{book{title, desc}, book{"title", "desc"}}
-	var myLibrary = list.New(books, list.NewDefaultDelegate(), 46, 2)
-
-	myLibrary.Title = "Library"
-
-	m.list = myLibrary
-
-}
-
 func initialModel() model {
 
-	var myLibrary = list.New(books, list.NewDefaultDelegate(), 0, 0)
-
-	myLibrary.Title = "Library"
+	existingLibrary := []list.Item{
+		book{title: "Thinking, Fast and Slow", desc: "Daniel Kahneman"},
+		book{title: "12 Rules for Life", desc: "Jordan B. Peterson"},
+		book{title: "The Art of Seduction", desc: "Robert Greene"},
+		book{title: "The 33 Strategies of War", desc: "Robert Greene"},
+	}
 
 	m := model{
 		inputs:   make([]textinput.Model, 2),
 		books:    []string{},
 		selected: make(map[int]struct{}),
 		boeken:   make(map[string]string),
-		list:     myLibrary,
+		list:     list.New(existingLibrary, list.NewDefaultDelegate(), 0, 0),
 	}
+
+	m.list.Title = "Your Library"
 
 	var t textinput.Model
 	for i := range m.inputs {
 		t = textinput.New()
 		t.CursorStyle = cursorStyle
-		t.CharLimit = 32
+		t.CharLimit = 64
 
 		switch i {
 		case 0:
@@ -116,7 +102,7 @@ func initialModel() model {
 			t.PromptStyle = focusedStyle
 			t.TextStyle = focusedStyle
 		case 1:
-			t.Placeholder = "Description"
+			t.Placeholder = "Author"
 			t.CharLimit = 64
 
 		}
@@ -137,13 +123,14 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// var cmds []tea.Cmd
+	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
 		m.list.SetSize(msg.Width-h, msg.Height-v)
 	case tea.KeyMsg:
+
 		switch msg.String() {
 		case "ctrl+c", "esc":
 			return m, tea.Quit
@@ -168,12 +155,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.window == 0 {
 				len_inputs = len(m.inputs)
 			} else if m.window == 1 {
-				len_inputs = len(m.books)
+				len_inputs = 3
 			}
 
 			if m.window == 0 {
-
-				var myBooks []string
 
 				if s == "up" {
 					m.focusIndex--
@@ -184,23 +169,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				if s == "enter" && m.focusIndex == len_inputs+1 {
 
-					for _, text := range m.inputs {
-						if text.Value() == "" {
-							return m, tea.Quit
-						} else {
-							myBooks = append(myBooks, text.Value())
-
-						}
-
-					}
-
-					for i := 0; i < len(myBooks)-1; i++ {
-						m.addBook(myBooks[i], myBooks[i+1])
-
-					}
-
-					m.focusIndex = 0
 					m.window = 1
+					m.focusIndex = 0
+
+					if m.inputs[0].Value() != "" && m.inputs[1].Value() != "" {
+
+						cmds = append(cmds, m.list.InsertItem(0, book{title: m.inputs[0].Value(), desc: m.inputs[1].Value()}))
+
+					} else {
+						return m, tea.Quit
+					}
 
 				}
 
@@ -224,7 +202,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			//TODO@bwelboren : delete selected book record
 			if m.window == 1 {
-				var cmd tea.Cmd
 
 				if s == "up" {
 					if m.focusIndex > 0 {
@@ -237,20 +214,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 
-				return m, cmd
 			}
 
 		}
+
 	}
 
-	// This will also call our delegate's update function.
-	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
-	m.updateInputs(msg)
+	newListModel, cmd := m.list.Update(msg)
+	m.list = newListModel
+	cmds = append(cmds, cmd)
+	cmds = append(cmds, m.updateInputs(msg))
 
-	return m, cmd
-
-	//return m, tea.Batch(cmds...)
+	return m, tea.Batch(cmds...)
 
 }
 
@@ -280,10 +255,7 @@ func (m model) View() string {
 
 		return docStyle.Render(m.list.View())
 
-		//s += fmt.Sprintf("%s Boek:%s\t\tBeschrijving:%s\n", cursor, m.boeken[x], m.boeken[y])
-
 	}
-
 	b.WriteString(footerStyle(footer))
 
 	return b.String()
