@@ -1,8 +1,5 @@
 package main
 
-// A simple example demonstrating the use of multiple text input components
-// from the Bubbles component library.
-
 import (
 	"fmt"
 	"os"
@@ -41,9 +38,7 @@ type model struct {
 	focusIndex int
 	inputs     []textinput.Model
 	window     int
-	books      []string
 	selected   map[int]struct{}
-	boeken     map[string]string
 	list       list.Model
 }
 
@@ -81,13 +76,12 @@ func initialModel() model {
 
 	m := model{
 		inputs:   make([]textinput.Model, 2),
-		books:    []string{},
 		selected: make(map[int]struct{}),
-		boeken:   make(map[string]string),
 		list:     list.New(existingLibrary, list.NewDefaultDelegate(), 0, 0),
 	}
 
 	m.list.Title = "Your Library"
+	m.list.SetShowHelp(false)
 
 	var t textinput.Model
 	for i := range m.inputs {
@@ -136,38 +130,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "ctrl+a":
-			// Put focus back to first index 'Book' when pressing ctrl+a
 			m.inputs[0].Focus()
 			m.window = 0
 
 		case "ctrl+b":
 			m.window = 1
 
-		case "tab", "shift+tab", "enter", "up", "down", "ctrl+d":
-			s := msg.String()
+		case "ctrl+d":
+			if m.window == 1 {
+				m.list.RemoveItem(m.list.Index())
+			}
+
+		case "enter", "up", "down":
+			key := msg.String()
 
 			cmds := make([]tea.Cmd, len(m.inputs))
 
-			// Doesnt matter which window, we use the same keys
-
-			var len_inputs int
-
-			if m.window == 0 {
-				len_inputs = len(m.inputs)
-			} else if m.window == 1 {
-				len_inputs = 3
-			}
-
 			if m.window == 0 {
 
-				if s == "up" {
+				if key == "up" {
 					m.focusIndex--
-				} else {
+				} else if key == "down" || key == "enter" {
 					m.focusIndex++
 				}
-				// When submitting
 
-				if s == "enter" && m.focusIndex == len_inputs+1 {
+				if m.focusIndex < 0 {
+					m.focusIndex = 2
+				} else if m.focusIndex > 2 && key != "enter" {
+					m.focusIndex = 0
+				}
+
+				if key == "enter" && m.focusIndex == 3 {
 
 					m.window = 1
 					m.focusIndex = 0
@@ -182,9 +175,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				}
 
-				// Handle textInput styling
-
-				for i := 0; i <= len_inputs-1; i++ {
+				for i := 0; i <= len(m.inputs)-1; i++ {
 					if i == m.focusIndex {
 						// Set focused state
 						cmds[i] = m.inputs[i].Focus()
@@ -196,22 +187,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.inputs[i].Blur()
 					m.inputs[i].PromptStyle = noStyle
 					m.inputs[i].TextStyle = noStyle
-				}
-
-			}
-
-			//TODO@bwelboren : delete selected book record
-			if m.window == 1 {
-
-				if s == "up" {
-					if m.focusIndex > 0 {
-						m.focusIndex--
-					}
-				}
-				if s == "down" {
-					if m.focusIndex < len(m.boeken)-1 {
-						m.focusIndex++
-					}
 				}
 
 			}
@@ -234,7 +209,7 @@ func (m model) View() string {
 
 	if m.window == 0 {
 
-		b.WriteString("Add a book.\n\n")
+		b.WriteString("YourLibrary TUI\n\n")
 
 		for i := range m.inputs {
 			b.WriteString(m.inputs[i].View())
