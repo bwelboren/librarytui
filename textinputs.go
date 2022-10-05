@@ -38,7 +38,6 @@ type model struct {
 	focusIndex int
 	inputs     []textinput.Model
 	window     int
-	selected   map[int]struct{}
 	list       list.Model
 }
 
@@ -75,13 +74,14 @@ func initialModel() model {
 	}
 
 	m := model{
-		inputs:   make([]textinput.Model, 2),
-		selected: make(map[int]struct{}),
-		list:     list.New(existingLibrary, list.NewDefaultDelegate(), 0, 0),
+		inputs:     make([]textinput.Model, 2),
+		list:       list.New(existingLibrary, list.NewDefaultDelegate(), 0, 0),
+		focusIndex: 0,
+		window:     0,
 	}
 
 	m.list.Title = "Your Library"
-	m.list.SetShowHelp(false)
+	//m.list.SetShowHelp(false)
 
 	var t textinput.Model
 	for i := range m.inputs {
@@ -117,20 +117,23 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
+	cmds := make([]tea.Cmd, len(m.inputs))
 
 	switch msg := msg.(type) {
+
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
 		m.list.SetSize(msg.Width-h, msg.Height-v)
 	case tea.KeyMsg:
 
 		switch msg.String() {
-		case "ctrl+c", "esc":
+
+		case "ctrl+c":
 			return m, tea.Quit
 
 		case "ctrl+a":
 			m.inputs[0].Focus()
+			m.focusIndex = 0
 			m.window = 0
 
 		case "ctrl+b":
@@ -142,9 +145,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "enter", "up", "down":
-			key := msg.String()
 
-			cmds := make([]tea.Cmd, len(m.inputs))
+			key := msg.String()
 
 			if m.window == 0 {
 
@@ -156,26 +158,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				if m.focusIndex < 0 {
 					m.focusIndex = 2
-				} else if m.focusIndex > 2 && key != "enter" {
-					m.focusIndex = 0
+				}
+				if m.focusIndex > 2 {
+					if key != "enter" {
+						m.focusIndex = 0
+					}
 				}
 
-				if key == "enter" && m.focusIndex == 3 {
-
+				if m.focusIndex == 3 && key == "enter" {
 					m.window = 1
-					m.focusIndex = 0
 
 					if m.inputs[0].Value() != "" && m.inputs[1].Value() != "" {
-
 						cmds = append(cmds, m.list.InsertItem(0, book{title: m.inputs[0].Value(), desc: m.inputs[1].Value()}))
-
 					} else {
 						return m, tea.Quit
 					}
 
 				}
 
-				for i := 0; i <= len(m.inputs)-1; i++ {
+				for i := 0; i < 2; i++ {
 					if i == m.focusIndex {
 						// Set focused state
 						cmds[i] = m.inputs[i].Focus()
@@ -195,10 +196,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	}
 
-	newListModel, cmd := m.list.Update(msg)
-	m.list = newListModel
-	cmds = append(cmds, cmd)
-	cmds = append(cmds, m.updateInputs(msg))
+	switch m.window {
+	case 0:
+		cmds = append(cmds, m.updateInputs(msg))
+	case 1:
+		newListModel, cmd := m.list.Update(msg)
+		m.list = newListModel
+		cmds = append(cmds, cmd)
+	}
 
 	return m, tea.Batch(cmds...)
 
@@ -208,17 +213,16 @@ func (m model) View() string {
 	var b strings.Builder
 
 	if m.window == 0 {
-
 		b.WriteString("YourLibrary TUI\n\n")
 
 		for i := range m.inputs {
 			b.WriteString(m.inputs[i].View())
-			if i < len(m.inputs)-1 {
+			if i < 2 {
 				b.WriteRune('\n')
 			}
 		}
 		button := &blurredButton
-		if m.focusIndex == len(m.inputs) {
+		if m.focusIndex == 2 {
 			button = &focusedButton
 		}
 		fmt.Fprintf(&b, "\n\n%s\n", *button)
